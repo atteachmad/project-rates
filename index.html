@@ -21,7 +21,15 @@ window.APP_CONFIG = {
   // Tempel URL Web App Google Apps Script (berakhiran /exec) di antara tanda kutip:
   API_URL: 'https://script.google.com/macros/s/AKfycbzDWC_2jpoZRmFyWiqws_RnTiEHydpzTCrQ_-egnrwv0_ptDt1B4uloYMFXKRUpVwlA/exec',
   POLL_SECONDS: 10,                    // seberapa sering cek task baru (detik) — minimum 4
-  APP_NAME: 'Project Rates'
+  APP_NAME: 'Project Rates',
+  FIREBASE: {
+    apiKey: '',
+    authDomain: '',
+    projectId: '',
+    messagingSenderId: '',
+    appId: '',
+    vapidKey: ''            // Cloud Messaging > Web Push certificates > Key pair
+  }
 };
 </script>
 <!-- ========================================================================== -->
@@ -234,6 +242,53 @@ async function askNotifyPermission() {
   toast(p === 'granted' ? 'Notifikasi sistem aktif (saat aplikasi terbuka di latar belakang)' : 'Notifikasi sistem ditolak', p === 'granted' ? 'ok' : 'err');
 }
 
+/* ------------- PUSH NOTIFICATION (FCM): dering saat browser / aplikasi ditutup ------------- */
+const PushN = {
+  cfg() { return CFG.FIREBASE && CFG.FIREBASE.apiKey && CFG.FIREBASE.vapidKey ? CFG.FIREBASE : null; },
+  supported() { return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; },
+  load(src) { return new Promise((res, rej) => { if ([...document.scripts].some(s => s.src === src)) return res(); const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Gagal memuat Firebase SDK')); document.head.appendChild(s); }); },
+  async enable(interactive) {
+    if (!this.cfg()) { if (interactive) return askNotifyPermission(); return; }
+    if (!this.supported()) { if (interactive) toast('Browser ini belum mendukung push. iPhone: tambahkan aplikasi ke Layar Utama lebih dulu.', 'err'); return; }
+    if (Notification.permission === 'default' && interactive) await Notification.requestPermission();
+    if (Notification.permission !== 'granted') { if (interactive) toast('Izin notifikasi ditolak. Aktifkan lewat pengaturan situs di browser.', 'err'); return; }
+    try {
+      await this.load('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js');
+      await this.load('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js');
+      const c = this.cfg(); if (!firebase.apps.length) firebase.initializeApp(c);
+      const reg = await navigator.serviceWorker.ready;
+      const token = await firebase.messaging().getToken({ vapidKey: c.vapidKey, serviceWorkerRegistration: reg });
+      if (!token) throw new Error('Token notifikasi kosong');
+      const key = (S.user ? S.user.email : '') + '|' + token;
+      if (store.get('pr_push') !== key) { await api('push.register', { pushToken: token, device: navigator.userAgent.slice(0, 100) }); store.set('pr_push', key); }
+      if (interactive) toast('Notifikasi latar belakang aktif di perangkat ini');
+      const b = $('#push-bar'); if (b) b.remove();
+    } catch (e) { if (interactive) toast('Gagal mengaktifkan notifikasi: ' + e.message, 'err'); }
+  },
+  prompt() {
+    if (!this.cfg() || !this.supported() || $('#push-bar')) return;
+    if (Notification.permission === 'granted') return this.enable(false);
+    if (Notification.permission === 'denied' || store.get('pr_push_later') === todayStr()) return;
+    const d = document.createElement('div'); d.id = 'push-bar';
+    d.style.cssText = 'position:fixed;left:.75rem;right:.75rem;bottom:5.5rem;z-index:80;max-width:30rem;margin:0 auto;background:#14181a;color:#fff;border-radius:1.2rem;padding:.9rem 1rem;box-shadow:0 14px 30px -10px rgba(0,0,0,.5)';
+    d.innerHTML = '<div style="font-weight:800">Aktifkan notifikasi</div><div style="font-size:.82rem;opacity:.8;margin:.2rem 0 .7rem">Agar tugas tetap berbunyi walau aplikasi / browser ditutup.</div><div style="display:flex;gap:.5rem"><button class="btn-light" data-act="push-on">Aktifkan</button><button class="btn-ghost-w" style="width:auto;padding:0 1rem" data-act="push-later">Nanti</button></div>';
+    document.body.appendChild(d);
+  },
+  boot() {
+    navigator.serviceWorker && navigator.serviceWorker.addEventListener('message', e => {
+      const m = e.data || {};
+      if (m.type === 'push') pollOnce(true);
+      if (m.type === 'nav' && m.url) { const h = String(m.url).split('#')[1]; if (h) location.hash = '#' + h; }
+    });
+    setTimeout(() => this.prompt(), 2000);
+  }
+};
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]'); if (!el) return;
+  if (el.dataset.act === 'push-on') PushN.enable(true);
+  if (el.dataset.act === 'push-later') { store.set('pr_push_later', todayStr()); const b = $('#push-bar'); if (b) b.remove(); }
+});
+  
 /* ------------------------------ POLLING -------------------------------- */
 async function pollOnce(force = false) {
   if (S.polling || !S.token || !S.user) return;
@@ -334,6 +389,7 @@ async function startApp() {
   renderShell();
   applyTasks(t.tasks, true);
   startPolling();
+  PushN.boot();
   route();
 }
 
@@ -364,7 +420,7 @@ function renderShell() {
 ACTIONS['toggle-sound'] = () => { Snd.unlock(); Snd.setMuted(!Snd.muted); toast(Snd.muted ? 'Suara dimatikan' : 'Suara dinyalakan'); if (!Snd.muted) Snd.ring('update'); };
 ACTIONS['menu'] = () => $('#menu').classList.toggle('hidden');
 ACTIONS['test-ring'] = () => { $('#menu').classList.add('hidden'); Snd.unlock(); const was = Snd.muted; Snd.muted = false; const ok = Snd.ring('task'); Snd.muted = was; toast(ok ? (was ? 'Tes dering (suara sedang dimatikan)' : 'Dering diputar') : 'Browser memblokir suara — ketuk layar lalu coba lagi', ok ? 'ok' : 'err'); };
-ACTIONS['enable-notif'] = () => { $('#menu').classList.add('hidden'); askNotifyPermission(); };
+ACTIONS['enable-notif'] = () => { $('#menu').classList.add('hidden'); PushN.enable(true); };
 ACTIONS['refresh'] = () => { $('#menu').classList.add('hidden'); pollOnce(true); route(); };
 ACTIONS['logout'] = () => { api('me').catch(() => { }); logout(false); };
 ACTIONS['banner-ack'] = () => ackAlerts();
@@ -794,7 +850,8 @@ function projectForm(p) {
       ae: val('ae'), name: val('name'), pickupLoc: val('pickupLoc'), dest: cityOf().name, pickup: val('pickup'), vehicle: val('vehicle'), distance: dist,
       drivers: +f.querySelector('input[name=drivers]:checked').value, tol: val('tol'), adjTol: parseMoney(val('adjTol')), agentCommission: parseMoney(val('agentCommission')),
       goodsValue: parseMoney(val('goodsValue')), adjRates: parseMoney(val('adjRates')), awb: val('awb'), stage: val('stage'), notes: val('notes'),
-      service: f.querySelector('input[name=service]:checked').value, dispatch: f.elements.dispatch ? f.elements.dispatch.checked : false
+      service: f.querySelector('input[name=service]:checked').value, dispatch: f.elements.dispatch ? f.elements.dispatch.checked : false,
+      preferred: (f.querySelector('input[name=preferred]:checked') || {}).value || ''
     };
     guard(async () => {
       const r = await api(edit ? 'projects.update' : 'projects.create', edit ? { id: p.id, ...data } : data);
@@ -808,10 +865,17 @@ function projectForm(p) {
 }
 function renderAvail(box, a, veh) {
   const ready = a.units.filter(u => u.state === 'Ready'), ok = a.recommend === 'Internal';
+  const fm = box.closest('form'), canPick = !!(fm && fm.elements.dispatch);
+  if (!box._sel) { box._sel = 1; box.addEventListener('change', e => { if (e.target.name === 'preferred') box.dataset.sel = e.target.value; }); }
+  const sel = ready.some(u => u.name === box.dataset.sel) ? box.dataset.sel : '';
+  box.dataset.sel = sel;
   box.innerHTML = `<div class="avail-in ${ok ? 'ok' : 'no'}">
     <div class="flex items-center gap-3">${ico(ok ? 'truck' : 'info', 'w-6 h-6')}<div class="min-w-0"><div class="font-extrabold leading-tight">${ok ? `Internal Ready: ${veh ? a.readyMatch : a.ready} ${veh ? 'unit ' + esc(veh) : 'dari ' + a.total + ' unit'}` : `Rekomendasi Vendor${veh ? ' — tidak ada ' + esc(veh) + ' internal yang ready' : ' — semua unit internal terpakai'}`}</div>
       <div class="text-xs opacity-80">${esc(fmtD(a.date))} · ${a.ready}/${a.total} driver internal tersedia${veh ? ` · ${a.readyMatch} sesuai tipe ${esc(veh)}` : ''}</div></div></div>
-    <div class="flex flex-wrap gap-1.5 mt-2.5">${a.units.map(u => `<span class="chip ${u.state === 'Ready' ? (u.match ? 'chip-green' : 'chip-gray') : 'chip-red'}" title="${esc(u.type)} · ${esc(u.state)}">${esc(u.name.split(' ')[0])} · ${esc(u.type)}</span>`).join('')}</div></div>`;
+    <div class="flex flex-wrap gap-1.5 mt-2.5">${a.units.map(u => `<span class="chip ${u.state === 'Ready' ? (u.match ? 'chip-green' : 'chip-gray') : 'chip-red'}" title="${esc(u.type)} · ${esc(u.state)}">${esc(u.name.split(' ')[0])} · ${esc(u.type)}</span>`).join('')}</div>
+    ${canPick && ready.length ? `<div class="mt-3 text-ink"><div class="font-bold text-sm mb-1.5">Tentukan driver (opsional)</div><div class="text-xs opacity-70 mb-2">Hanya driver yang kosong pada tanggal ini. Koordinator tetap menerima notifikasi dan bisa mengubahnya.</div>
+      <div class="grid sm:grid-cols-2 gap-2"><label class="ucard"><input type="radio" name="preferred" value="" ${sel === '' ? 'checked' : ''} hidden><div class="font-bold text-sm">Serahkan ke Koordinator</div></label>
+      ${ready.slice().sort((x, y) => (y.match ? 1 : 0) - (x.match ? 1 : 0) || x.ritaseMonth - y.ritaseMonth).map(u => `<label class="ucard"><input type="radio" name="preferred" value="${esc(u.name)}" ${sel === u.name ? 'checked' : ''} hidden><div class="font-bold text-sm truncate">${esc(u.name)}</div><div class="text-xs opacity-70">${esc(u.type)} · ${esc(u.nopol)}${u.match ? '' : ' · tipe berbeda'}</div></label>`).join('')}</div></div>` : ''}</div>`;
 }
 ACTIONS['add'] = () => projectForm(null);
 ACTIONS['edit-project'] = el => guard(async () => { closeModal(); const p = await fetchProject(el.dataset.id); if (!p) return toast('Proyek tidak ditemukan', 'err'); projectForm(p); });
@@ -831,7 +895,7 @@ PAGES.ops = {
     <div class="grid xl:grid-cols-[1fr_22rem] gap-5 items-start"><div class="space-y-6 min-w-0">
       <section><h2 class="h2 mb-3">Perlu konfirmasi ${pend.length ? `<span class="count hot">${pend.length}</span>` : ''}</h2>
         <div class="space-y-3">${pend.map(t => `<article class="task pend ${fresh.has(t.id) ? 'new' : ''}"><div class="flex flex-wrap items-start justify-between gap-2"><div class="min-w-0"><div class="flex items-center gap-2 flex-wrap"><span class="svc">${esc(t.service)}</span>${fresh.has(t.id) ? chip('BARU', 'chip-red blink') : ''}<span class="text-xs text-ink/50">${esc(t.id)}</span></div>
-            <h3 class="font-extrabold text-lg leading-snug mt-1">${esc(t.project)}</h3><div class="text-sm text-ink/60">AE: ${esc(t.ae)}</div></div>
+            <h3 class="font-extrabold text-lg leading-snug mt-1">${esc(t.project)}</h3><div class="text-sm text-ink/60">AE: ${esc(t.ae)}</div>${t.preferred ? `<div class="text-sm font-bold text-forest">Pilihan Sales: ${esc(t.preferred)}</div>` : ''}</div>
             <div class="text-right"><div class="font-bold">${esc(fmtDT(t.pickup))}</div><div class="text-xs text-ink/60">${esc(t.vehicle)}</div></div></div>
           <div class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm mt-3"><div>${ico('pin', 'w-4 h-4 inline -mt-0.5')} <b>Pick up:</b> ${esc(t.pickupLoc)}</div><div>${ico('nav', 'w-4 h-4 inline -mt-0.5')} <b>Tujuan:</b> ${esc(t.dest)}</div></div>
           ${t.notes ? `<p class="text-sm text-ink/60 mt-2 italic">“${esc(t.notes)}”</p>` : ''}
@@ -855,14 +919,15 @@ ACTIONS['confirm-task'] = el => guard(async () => {
   const t = taskOf(el.dataset.id); if (!t) return;
   const a = await api('availability', { date: t.pickup.slice(0, 10), vehicle: t.vehicle });
   const units = a.units.slice().sort((x, y) => (x.state === 'Ready' ? 0 : 1) - (y.state === 'Ready' ? 0 : 1) || (y.match - x.match) || x.ritaseMonth - y.ritaseMonth);
-  const sug = units.find(u => u.state === 'Ready' && u.match);
+  const pref = units.find(u => u.state === 'Ready' && t.preferred && u.name === t.preferred);   // pilihan Sales
+  const sug = pref || units.find(u => u.state === 'Ready' && u.match);
   const cur = t.status === 'Terkonfirmasi' ? t : null, isVendor = cur && cur.source === 'Vendor';
   openModal(`<form id="f-conf" class="p-5 sm:p-7 space-y-5"><div class="flex items-start justify-between gap-3"><div><div class="flex gap-2 items-center"><span class="svc">${esc(t.service)}</span><span class="text-xs text-ink/50">${esc(t.id)}</span></div><h2 class="text-2xl font-extrabold leading-tight mt-1">Confirm & Mapping</h2></div><button type="button" class="icon-btn" data-act="close-modal">${ico('x')}</button></div>
     <div class="rounded-2xl bg-ink/[.04] p-4 text-sm space-y-1"><div class="font-bold text-base">${esc(t.project)}</div><div>${esc(t.pickupLoc)} → <b>${esc(t.dest)}</b></div><div class="text-ink/60">${esc(fmtDT(t.pickup))} · ${esc(t.vehicle)} · AE ${esc(t.ae)}</div>${t.notes ? `<div class="italic text-ink/60">“${esc(t.notes)}”</div>` : ''}</div>
     <div class="lbl">Sumber armada<div class="seg w-full" id="src"><label class="grow"><input type="radio" name="source" value="Internal" ${isVendor ? '' : 'checked'} hidden><span>Internal (${a.ready}/${a.total} ready)</span></label><label class="grow"><input type="radio" name="source" value="Vendor" ${isVendor ? 'checked' : ''} hidden><span>Vendor</span></label></div></div>
     <div id="p-int" class="space-y-2"><div class="lbl">Nama Petugas Delivery / Driver${a.ready === 0 ? '<small class="hint text-ember">Tidak ada unit internal ready pada tanggal ini — pertimbangkan Vendor.</small>' : ''}</div>
       <div class="grid sm:grid-cols-2 gap-2 max-h-[40vh] overflow-y-auto pr-1">${units.map(u => { const dis = u.state === 'Maintenance', pick = cur && !isVendor && cur.petugas === u.name; return `<label class="ucard ${dis ? 'dis' : ''}"><input type="radio" name="petugas" value="${esc(u.name)}" data-nopol="${esc(u.nopol)}" ${dis ? 'disabled' : ''} ${pick || (!cur && sug && sug.name === u.name) ? 'checked' : ''} hidden>
-        <div class="flex justify-between gap-2 items-start"><div class="min-w-0"><div class="font-bold truncate">${esc(u.name)}</div><div class="text-xs text-ink/60">${esc(u.type)} · ${esc(u.nopol)}</div></div><div class="flex flex-col items-end gap-1">${chip(u.state, STATE_CLS[u.state])}${sug && sug.name === u.name ? chip('Disarankan', 'chip-dark') : ''}</div></div>
+        <div class="flex justify-between gap-2 items-start"><div class="min-w-0"><div class="font-bold truncate">${esc(u.name)}</div><div class="text-xs text-ink/60">${esc(u.type)} · ${esc(u.nopol)}</div></div><div class="flex flex-col items-end gap-1">${chip(u.state, STATE_CLS[u.state])}${sug && sug.name === u.name ? chip(pref && pref.name === u.name ? 'Pilihan Sales' : 'Disarankan', 'chip-dark') : ''}</div></div>
         ${ritaseCell(u)}${!u.match ? '<div class="text-[11px] text-amber-700 mt-1">Tipe armada berbeda dari permintaan</div>' : ''}</label>`; }).join('')}</div></div>
     <div id="p-ven" class="hidden"><label class="lbl">Nama vendor / driver vendor<input class="inp" name="vendor" maxlength="100" value="${isVendor ? esc(cur.petugas) : ''}" placeholder="mis. PT Mitra Logistik / Pak Andi"></label></div>
     <div class="grid sm:grid-cols-2 gap-4"><label class="lbl">Nopol armada<i class="req">*</i><input class="inp uppercase" name="nopol" required maxlength="20" value="${esc(cur ? cur.nopol : (sug ? sug.nopol : ''))}" list="dl-nopol" placeholder="mis. D 1234 XX"><datalist id="dl-nopol">${a.units.map(u => `<option value="${esc(u.nopol)}">${esc(u.name)}</option>`).join('')}</datalist></label>
