@@ -343,7 +343,7 @@ function renderShell() {
   <div id="offline" class="hidden offline">Tidak ada koneksi — mencoba menyambung kembali…</div>
   <div id="banner" class="banner hidden" role="alert" aria-live="assertive"></div>
   <header class="topbar">
-    <div class="flex items-center gap-3"><div class="logo sm">PR</div><div class="hidden sm:block leading-tight"><div class="font-extrabold">Project Rates</div><div class="text-[11px] text-ink/50 -mt-0.5">Project Rates</div></div></div>
+    <div class="flex items-center gap-3"><div class="logo sm">PR</div><div class="hidden sm:block leading-tight"><div class="font-extrabold">Project Rates</div><div class="text-[11px] text-ink/50 -mt-0.5">sales and operations</div></div></div>
     <nav id="nav" class="nav-pills" aria-label="Menu utama">${nav.map(([k, l]) => `<a href="#/${k}" data-nav="${k}" class="pill">${esc(l)}${k === 'ops' ? '<span id="nav-badge-ops" class="nbadge hidden">0</span>' : ''}</a>`).join('')}</nav>
     <div class="flex items-center gap-1.5">
       ${canAdd ? `<button class="btn-primary hidden md:inline-flex" data-act="add">${ico('plus', 'w-4 h-4')} Add</button>` : ''}
