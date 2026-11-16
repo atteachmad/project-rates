@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Project Rates JNE Bandung</title>
-<meta name="description" content="Project Rates, dispatch armada dan notifikasi operasional JNE Bandung">
+<title>Project Rates </title>
+<meta name="description" content="Project Rates, dispatch armada dan notifikasi operasional">
 <meta name="theme-color" content="#14181a">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
@@ -275,7 +275,7 @@ window.showLogin = function (msg = '') {
       <div class="relative flex items-center gap-3"><div class="logo">PR</div><div class="font-bold text-lg">Project Rates</div></div>
       <div class="relative max-w-md"><h1 class="text-5xl font-extrabold leading-[1.05]">Tarif, armada, dan penugasan — satu layar.</h1>
         <p class="mt-5 text-white/70">Ajukan project FTL/LTL, pantau kuota driver internal, dan dapatkan notifikasi dering saat tugas masuk.</p></div>
-      <div class="relative text-sm text-white/50">JNE Bandung · Business Review Planning</div>
+      <div class="relative text-sm text-white/50"> · Business Review Planning</div>
     </section>
     <section class="flex items-center justify-center p-6">
       <div class="w-full max-w-sm">
@@ -343,7 +343,7 @@ function renderShell() {
   <div id="offline" class="hidden offline">Tidak ada koneksi — mencoba menyambung kembali…</div>
   <div id="banner" class="banner hidden" role="alert" aria-live="assertive"></div>
   <header class="topbar">
-    <div class="flex items-center gap-3"><div class="logo sm">PR</div><div class="hidden sm:block leading-tight"><div class="font-extrabold">Project Rates</div><div class="text-[11px] text-ink/50 -mt-0.5">JNE Bandung</div></div></div>
+    <div class="flex items-center gap-3"><div class="logo sm">PR</div><div class="hidden sm:block leading-tight"><div class="font-extrabold">Project Rates</div><div class="text-[11px] text-ink/50 -mt-0.5">Project Rates</div></div></div>
     <nav id="nav" class="nav-pills" aria-label="Menu utama">${nav.map(([k, l]) => `<a href="#/${k}" data-nav="${k}" class="pill">${esc(l)}${k === 'ops' ? '<span id="nav-badge-ops" class="nbadge hidden">0</span>' : ''}</a>`).join('')}</nav>
     <div class="flex items-center gap-1.5">
       ${canAdd ? `<button class="btn-primary hidden md:inline-flex" data-act="add">${ico('plus', 'w-4 h-4')} Add</button>` : ''}
