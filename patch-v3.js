@@ -202,6 +202,7 @@ button.v3-rw.dim{opacity:.4}
   const V = { rows: null, key: '', mode: '', lastMode: '', gran: '', metric: { overview: '', finance: 'rvpf' }, X: newX(), aeOpen: false, aeQ: '', view: null, T: null, ro: null, trunc: false };
   const FIELD = { ae: 'ae', st: 'st', vh: 'vh', ds: 'ds' };
   const isAdm = () => S.user && S.user.role === 'Admin';
+  const multiAe = () => S.user && (S.user.role === 'Admin' || /^SPV Sales/.test(S.user.level || ''));
   const base = () => V.mode === 'finance' ? V.rows.filter(r => lowc(r.st) === 'closed won') : V.rows;
   const curMetric = () => { let m = V.metric[V.mode] || (isAdm() ? 'rv' : 'rt'); if (!isAdm() && MET[m].adm) m = 'rt'; if (m === 'rvpf' && !isAdm()) m = 'rt'; return m; };
   const mval = (r, m) => m === 'rv' ? r.rv : m === 'pf' ? r.pf : m === 'rt' ? r.rt : 1;
@@ -302,7 +303,7 @@ button.v3-rw.dim{opacity:.4}
     const g = V.gEff || V.gran || 'month';
     return `<section class="v3-card" style="margin-bottom:.75rem"><div class="v3-ch"><h2>Tren</h2><select class="v3-selb" data-v3="metric" aria-label="Metrik">${opts.map(([k, l]) => `<option value="${k}"${k === m ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
       <div class="v3-seg" role="group" aria-label="Skala waktu">${GRANS.map(([k, l]) => `<button type="button" data-act="v3-gran" data-v="${k}" class="${g === k ? 'on' : ''}">${l}</button>`).join('')}</div>
-      ${adm ? aeButtonHTML() : ''}
+      ${multiAe() ? aeButtonHTML() : ''}
       <div id="v3-chart"></div><div class="v3-lg" id="v3-lg"></div></section>`;
   }
   function recentHTML() {
@@ -324,7 +325,7 @@ button.v3-rw.dim{opacity:.4}
     const fin = V.mode === 'finance', adm = isAdm();
     const head = fin ? `<div><h1 class="h1">Revenue & Profit</h1><p class="v3-sub">Hanya proyek <b>Closed Won</b>, berdasarkan tanggal Pick Up. Revenue = kolom PRICE (sebelum PPN).</p></div>` : `<div><p class="v3-sub" style="margin:0">Halo, ${esc(S.user.name.split(' ')[0])}</p><h1 class="h1">${adm ? 'Sales Overview' : 'Overview Saya'}</h1></div>`;
     const stageBars = fin ? '' : barsHTML('Per stage', 'st', 5);
-    const aeBars = adm ? barsHTML('Per AE', 'ae', 8) : '';
+    const aeBars = multiAe() ? barsHTML('Per AE', 'ae', 8) : '';
     let h = `<div class="v3-h">${head}${periodBar()}</div>${V.trunc ? '<div class="v3-card" style="margin-bottom:.75rem;font-size:.8rem">Data dibatasi 8.000 baris pertama. Persempit rentang tanggal untuk hasil lengkap.</div>' : ''}${chipsHTML()}${kpiHTML()}${trendCardHTML()}`;
     h += `<div class="v3-grid2">${aeBars}${stageBars}${barsHTML('Per jenis armada', 'vh', 6)}${barsHTML('Per kota tujuan', 'ds', 6)}</div>`;
     if (fin) h += adm ? aeTableHTML() : ''; else h += recentHTML() + tasksHTML();
@@ -440,16 +441,16 @@ button.v3-rw.dim{opacity:.4}
 
   /* -------------------------------------- pilih AE (akun Sales @jne.co.id baru) */
   async function ensureAe() {
-    if (!S.user || S.user.role !== 'Sales' || S.user.aeName || $('#v3-aemodal')) return;
+    if (!S.user || S.user.level !== 'Sales' || S.user.aeName || $('#v3-aemodal')) return;
     let names = []; try { names = (await api('profile.aeList')).names || []; } catch (e) { }
     V.aeNames = names;
-    openModal(`<div id="v3-aemodal" class="p-6 space-y-4"><h2 class="h2">Pilih nama AE Anda</h2><p class="text-sm" style="opacity:.65">Akun baru. Pilih nama AE sesuai kolom AE NAME di Sheet1 supaya proyek Anda tampil. Setelah dipilih, nama terkunci (Admin dapat mengubahnya di menu Pengguna).</p>
-      <input class="inp" id="v3-aq" placeholder="Cari nama AE…" autocomplete="off"><div class="v3-aelist2" id="v3-al"></div>
+    openModal(`<div id="v3-aemodal" class="p-6 space-y-4"><h2 class="h2">Pilih nama AE Anda</h2><p class="text-sm" style="opacity:.65">Akun baru. Pilih nama AE sesuai kolom AE NAME di Sheet1 supaya proyek Anda tampil. Setelah dipilih, nama & tim terkunci (Super Admin dapat mengubahnya di menu Pengguna).</p>
+      <select class="inp" id="v3-team"><option value="Corporate">Tim: Sales Corporate</option><option value="Retail">Tim: Sales Retail</option><option value="BDO 2">Tim: Sales BDO 2</option></select><input class="inp" id="v3-aq" placeholder="Cari nama AE…" autocomplete="off"><div class="v3-aelist2" id="v3-al"></div>
       <button type="button" class="btn-ghost w-full" data-act="v3-ae-new">Saya AE baru — pakai nama saya</button></div>`);
     const draw = () => { const q = lowc($('#v3-aq').value); $('#v3-al').innerHTML = (names.filter(n => !q || lowc(n).includes(q)).slice(0, 60).map(n => `<button type="button" class="v3-opt" data-act="v3-ae-pick" data-name="${esc(n)}"><span>${esc(n)}</span></button>`).join('')) || '<div class="v3-empty" style="padding:1rem">Tidak ditemukan</div>'; };
     $('#v3-aq').addEventListener('input', draw); draw();
   }
-  const saveAe = (name, btn) => guard(async () => { const r = await api('profile.setAe', { aeName: name }); S.user = r.user; S.boot = await api('bootstrap'); closeModal(); toast('Nama AE tersimpan'); V.rows = null; route(); }, btn);
+  const saveAe = (name, btn) => guard(async () => { const r = await api('profile.setAe', { aeName: name, team: ($('#v3-team') || {}).value || 'Corporate' }); S.user = r.user; S.boot = await api('bootstrap'); closeModal(); toast('Nama AE tersimpan'); V.rows = null; route(); }, btn);
   ACTIONS['v3-ae-pick'] = el => saveAe(el.dataset.name, el);
   ACTIONS['v3-ae-new'] = el => saveAe(String(S.user.name || S.user.email.split('@')[0]).toUpperCase(), el);
   const _sa = window.startApp; if (typeof _sa === 'function') window.startApp = async function () { const r = await _sa.apply(this, arguments); setTimeout(ensureAe, 500); return r; };
