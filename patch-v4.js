@@ -34,7 +34,6 @@
 .v4-ck{display:flex;gap:.6rem;align-items:flex-start;padding:.55rem;border:1px solid rgba(20,24,26,.12);border-radius:.8rem;font-size:.82rem;min-width:0}
 .v4-ck input{margin-top:.15rem;flex:none}
 .v4-ck>div{min-width:0;overflow-wrap:anywhere}
-.v4-ro [data-act="edit-project"],.v4-ro #fab,.v4-ro [data-act="add-project"],.v4-ro [data-act="new-project"]{display:none!important}
 `;
   const st = document.createElement('style'); st.id = 'v4-css'; st.textContent = CSS; document.head.appendChild(st);
 
@@ -56,7 +55,6 @@
       pick.forEach(([k, nm]) => { const n = find(src, k); if (n) out.push(nm ? [k, nm].concat(n.slice(2)) : n); });
       NAV.Koordinator.length = 0; out.forEach(n => NAV.Koordinator.push(n)); HOME.Koordinator = 'ops';
     }
-    document.body.classList.toggle('v4-ro', /^SPV Sales/.test(l));
   }
   function fixChip() {
     const l = lv(); if (!S.user || l === S.user.role) return;
@@ -113,6 +111,10 @@
   const _pf = window.projectForm;
   if (typeof _pf === 'function') window.projectForm = function (p) {
     const r = _pf.apply(this, arguments); mode = 'one'; dates = [];
+    if (/^SPV Sales/.test(lv())) { const f0 = document.getElementById('f-proj'), ae = f0 && f0.elements.ae; if (ae && !p) {   /* SPV Sales: pilih AE dalam cakupan */
+      ae.removeAttribute('readonly'); ae.required = true; ae.setAttribute('list', 'dl-ae'); ae.setAttribute('autocomplete', 'off'); ae.placeholder = 'Ketik untuk mencari AE…'; ae.value = '';
+      if (!document.getElementById('dl-ae')) { const dl = document.createElement('datalist'); dl.id = 'dl-ae'; dl.innerHTML = ((S.boot && S.boot.aeNames) || []).map(n => `<option value="${esc(n)}">`).join(''); ae.after(dl); } } }
+
     if (!p) { const f = document.getElementById('f-proj'), lab = f && f.elements.pickup && f.elements.pickup.closest('label'); if (lab && !document.getElementById('v4-sched')) { const d = document.createElement('div'); d.id = 'v4-sched'; d.className = 'sm:col-span-2'; lab.insertAdjacentElement('afterend', d); drawSched(); } }
     return r;
   };
